@@ -3241,6 +3241,17 @@ If FORMATTED-P, return the formatted body content, when available."
       (setf body (concat body " " (propertize "[edited]" 'face 'font-lock-comment-face))))
     body))
 
+(defvar ement-room-shr-rendering-functions
+  (list (cons 'blockquote
+              (lambda (dom)
+                (let ((beg (point-marker)))
+                  (shr-tag-blockquote dom)
+                  (add-text-properties beg (point-max)
+                                       '(wrap-prefix "    "
+                                                     line-prefix "    "))))))
+  "Alist of tag/function pairs to alter how Ement renders HTML tags.
+See `shr-external-rendering-functions' for details.")
+
 (defun ement-room--render-html (string)
   "Return rendered version of HTML STRING.
 HTML is rendered to Emacs text using `shr-insert-document'."
@@ -3255,17 +3266,12 @@ HTML is rendered to Emacs text using `shr-insert-document'."
       ;; resized (i.e. the wrapping is adjusted automatically by redisplay
       ;; rather than requiring the message to be re-rendered to HTML).
       (let ((shr-use-fonts ement-room-shr-use-fonts)
-            (old-fn (symbol-function 'shr-tag-blockquote))) ;; Bind to a var to avoid unknown-function linting errors.
-        (cl-letf (((symbol-function 'shr-fill-line) #'ignore)
-                  ((symbol-function 'shr-tag-blockquote)
-                   (lambda (dom)
-                     (let ((beg (point-marker)))
-                       (funcall old-fn dom)
-                       (add-text-properties beg (point-max)
-                                            '(wrap-prefix "    "
-                                                          line-prefix "    "))))))
-          (shr-insert-document
-           (libxml-parse-html-region (point-min) (point-max))))))
+            (shr-max-width nil)
+            (shr-external-rendering-functions
+             (append shr-external-rendering-functions
+                     ement-room-shr-rendering-functions)))
+        (shr-insert-document
+         (libxml-parse-html-region (point-min) (point-max)))))
     (string-trim (buffer-substring (point) (point-max)))))
 
 (cl-defun ement-room--event-mentions-user-p (event user &optional (room ement-room))
