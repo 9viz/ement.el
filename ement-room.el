@@ -4072,7 +4072,8 @@ Format defaults to `ement-room-message-format-spec', which see."
 If FORMATTED-P, return the formatted body content, when available."
   (pcase-let* (((cl-struct ement-event content
                            (unsigned (map ('redacted_by unsigned-redacted-by)))
-                           (local (map ('redacted-by local-redacted-by))))
+                           (local (map ('redacted-by local-redacted-by)))
+                           (local (map ('reply reply-event))))
                 event)
                ((map ('body main-body) msgtype ('format content-format) ('formatted_body formatted-body)
                      ('m.relates_to (map ('rel_type rel-type)))
@@ -4158,37 +4159,43 @@ If FORMATTED-P, return the formatted body content, when available."
       (setf body (concat body " " (propertize "[edited]" 'face 'font-lock-comment-face))))
     body))
 
-(defun ement-room--format-quotation-text (quoted-event)
-  "Return text for QUOTED-EVENT."
-  (pcase-let* (((cl-struct ement-event sender (content (map body))) quoted-event)
-               ((cl-struct ement-user (id sender-id)) sender))
-    (with-temp-buffer
-      (insert "> " "<" sender-id ">" body)
-      (goto-char (point-min))
-      (forward-line 1)
-      (while (not (eobp))
-        (insert "> ")
-        (forward-line 1))
-      (insert "\n")
-      (buffer-string))))
+(defun ement-room--rich-reply-callback (room event reply-event)
+  (when reply-event
+    (pcase-let* (((cl-struct ement-room (local (map buffer))) room))
+      (setf (map-elt (ement-event-local event) 'reply) (ement--make-event reply-event))
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer
+          (when-let ((node (ement-room--ewoc-last-matching ement-ewoc
+                             (lambda (data) (eq data event)))))
+            (ewoc-invalidate ement-ewoc node)))))))
 
-(defun ement-room--format-quotation-html (quoted-event room)
-  "Return HTML for QUOTED-EVENT in ROOM."
-  (pcase-let* (((cl-struct ement-room (id room-id)) room)
-               ((cl-struct ement-event content (id event-id) sender) quoted-event)
-               ((cl-struct ement-user (id sender-id)) sender)
-               ((map format body ('formatted_body formatted-body)) content))
-    (format "<mx-reply><blockquote>
+(defun ement-room--rich-reply-text (room reply-event body)
+  (format "> <%s> %s
+
+%s"
+          (ement-user-id (ement-event-sender reply-event))
+          (map-elt (ement-event-content reply-event) 'body)
+          body))
+
+(defun ement-room--rich-reply-html (room reply-event body)
+  (format
+   "<mx-reply><blockquote>
     <a href=\"https://matrix.to/#/%s/%s\">In reply to</a>
     <a href=\"https://matrix.to/#/%s\">%s</a>
     <br />
 %s
-  </blockquote></mx-reply>"
-            room-id event-id sender-id
-            (ement--user-displayname-in room sender)
-            (pcase format
-              ("org.matrix.custom.html" formatted-body)
-              (_ body)))))
+  </blockquote></mx-reply>
+%s"
+   (ement-room-id ement-room)
+   (ement-event-id reply-event)
+   (ement-user-id (ement-event-sender reply-event))
+   (or (ement-user-displayname (ement-event-sender reply-event))
+       (ement-user-id (ement-event-sender reply-event)))
+   (let ((content (ement-event-content reply-event)))
+     (if (equal (map-elt content 'format) "org.matrix.custom.html")
+         (map-elt content 'formatted_body)
+       (map-elt content 'body)))
+   body))
 
 (defun ement-room--render-html (string)
   "Return rendered version of HTML STRING.
