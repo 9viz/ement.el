@@ -1113,7 +1113,7 @@ suggested room."
     (alist-get selected-name name-to-room-session nil nil #'string=)))
 
 (cl-defun ement-send-message (room session
-                                   &key body formatted-body replying-to-event rich-reply filter then)
+                                   &key body formatted-body replying-to-event filter then)
   "Send message to ROOM on SESSION with BODY and FORMATTED-BODY.
 THEN may be a function to call after the event is sent
 successfully.  It is called with keyword arguments for ROOM,
@@ -1121,7 +1121,6 @@ SESSION, CONTENT, and DATA.
 
 REPLYING-TO-EVENT may be an event the message is
 in reply to; the message will reference it appropriately.
-If RICH-REPLY is non-nil, then a rich-reply is sent instead.
 
 FILTER may be a function through which to pass the message's
 content object before sending (see,
