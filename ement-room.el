@@ -2090,7 +2090,8 @@ and erases the buffer."
                           (and browse-url-browser-function
                                (list (cons "." browse-url-browser-function))))))))
   (setq-local completion-at-point-functions
-              '(ement-room--complete-members-at-point ement-room--complete-rooms-at-point))  
+              '(ement-room--complete-emoji-at-point ement-room--complete-members-at-point
+                ement-room--complete-rooms-at-point))
   (setq-local dnd-protocol-alist (append '(("^file:///" . ement-room-dnd-upload-file)
                                            ("^file:" . ement-room-dnd-upload-file))
                                          dnd-protocol-alist)))
@@ -2103,14 +2104,14 @@ INHERIT-INPUT-METHOD are as those expected by `read-string',
 which see.  Runs hook `ement-room-read-string-setup-hook', which
 see."
   (let ((room ement-room)
-        (session ement-session))
+        (session ement-session)
+        (capf completion-at-point-functions))
     (minibuffer-with-setup-hook
         (lambda ()
           "Bind keys and variables locally (to be called in minibuffer)."
           (setq-local ement-room room)
           (setq-local ement-session session)
-          (setq-local completion-at-point-functions
-                      '(ement-room--complete-members-at-point ement-room--complete-rooms-at-point))
+          (setq-local completion-at-point-functions capf)
           (visual-line-mode 1)
           (run-hooks 'ement-room-read-string-setup-hook))
       (read-from-minibuffer prompt initial-input ement-room-minibuffer-map
@@ -3798,7 +3799,8 @@ a copy of the local keymap, and sets `header-line-format'."
   (setq-local ement-session session)
   (setf ement-room-compose-buffer t)
   (setq-local completion-at-point-functions
-              (append '(ement-room--complete-members-at-point ement-room--complete-rooms-at-point)
+              (append '(ement-room--complete-emoji-at-point ement-room--complete-members-at-point
+                        ement-room--complete-rooms-at-point)
                       completion-at-point-functions))
   ;; FIXME: Compose with local map?
   (use-local-map (if (current-local-map)
@@ -4506,6 +4508,48 @@ For use in `completion-at-point-functions'."
      (delq nil (cl-loop for room in (ement-session-rooms session)
                         collect (ement-room-id room)
                         collect (ement-room-canonical-alias room))))))
+
+(defvar ement-room--emoji-ht nil
+  "Hash table of emojis with key as emoji name, and value as emoji.")
+
+(defvar emoji--all-bases)
+(defun ement-room-emoji--init (&optional force)
+  (emoji--init)
+  (when (or force (null ement-room--emoji-ht))
+    (setq ement-room--emoji-ht (make-hash-table :test #'equal))
+    (maphash
+     (lambda (name emoji)
+       (when (string-prefix-p "flag: " name)
+         (setq name (concat "fl_" (string-remove-prefix "flag: " name))))
+       (setq name (string-replace "." ""
+                                  (string-replace " " "_" (string-trim name))))
+       (puthash (concat ":" name ":") emoji ement-room--emoji-ht))
+     emoji--all-bases)))
+
+(defun ement-room--complete-emoji-at-point ()
+  "Return the completion data for the emoji at point, if any."
+  (save-excursion
+    (let ((end (point))
+          (beg (progn (skip-chars-backward "^[:space:]" (if (minibufferp)
+                                                            (minibuffer-prompt-end)
+                                                          (pos-bol)))
+                      (point))))
+      (when (eq (char-after) ?:)
+        (ement-room-emoji--init)
+        (list beg
+              end
+              ement-room--emoji-ht
+              :annotation-function
+              (lambda (string) (gethash string ement-room--emoji-ht))
+              :exit-function
+              (lambda (string status)
+                (when (and (memq status '(finished sole))
+                           (gethash string ement-room--emoji-ht))
+                  (search-backward string)
+                  (replace-match (gethash string ement-room--emoji-ht) nil t))))))))
+
+(when (< emacs-major-version 29)
+  (defalias 'ement-room--complete-emoji-at-point #'ignore))
 
 ;;;;; Transient
 
