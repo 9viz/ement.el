@@ -59,7 +59,6 @@
 (defvar ement-room-buffer-name-prefix)
 (defvar ement-room-buffer-name-suffix)
 (defvar ement-room-leave-kill-buffer)
-(defvar ement-room-send-rich-replies)
 (defvar ement-room-prism)
 (defvar ement-room-prism-color-adjustment)
 (defvar ement-room-prism-minimum-contrast)
